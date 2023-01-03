@@ -1,38 +1,40 @@
-package grpc
+package http
 
 import (
 	"net"
+	"net/http"
+	"time"
 
 	"github.com/lightmen/nami/log"
-
-	"google.golang.org/grpc"
 )
 
 type Server struct {
-	*grpc.Server
+	*http.Server
+	lis     net.Listener
 	network string
 	address string
-	lis     net.Listener
+	timeout time.Duration
 	log     log.Logger
 }
 
-func New(opts ...Option) (srv *Server, err error) {
-	srv = &Server{
+func New(opts ...Option) (s *Server, err error) {
+	s = &Server{
 		network: "tcp",
 		address: ":0",
+		timeout: 2 * time.Second,
 		log:     log.Default(),
 	}
 
 	for _, opt := range opts {
-		opt(srv)
+		opt(s)
 	}
 
-	err = srv.listen()
+	s.Server = &http.Server{}
+
+	err = s.listen()
 	if err != nil {
-		return srv, err
+		return nil, err
 	}
-
-	srv.Server = grpc.NewServer() // TODO： need add grpc.ServerOption
 
 	return
 }
@@ -43,12 +45,12 @@ func (s *Server) Start() (err error) {
 		return
 	}
 
-	s.log.Info("[gRPC] server lintening on: %s", s.lis.Addr().String())
+	s.log.Info("[HTTP] server lintening on: %s", s.lis.Addr().String())
 	return
 }
 
 func (s *Server) Stop() (err error) {
-	s.log.Info("[gRPC] server stopping")
+	s.log.Info("[HTTP] server stopping")
 	return
 }
 
@@ -61,6 +63,5 @@ func (s *Server) listen() error {
 
 		s.lis = lis
 	}
-
 	return nil
 }
