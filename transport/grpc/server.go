@@ -3,7 +3,7 @@ package grpc
 import (
 	"net"
 
-	"github.com/lightmen/nami/log"
+	"github.com/lightmen/nami/core/log"
 
 	"google.golang.org/grpc"
 )

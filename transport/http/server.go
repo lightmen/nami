@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lightmen/nami/log"
+	"github.com/lightmen/nami/core/log"
 )
 
 type Server struct {

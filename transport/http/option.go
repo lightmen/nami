@@ -3,7 +3,7 @@ package http
 import (
 	"net"
 
-	"github.com/lightmen/nami/log"
+	"github.com/lightmen/nami/core/log"
 )
 
 type Option func(s *Server)

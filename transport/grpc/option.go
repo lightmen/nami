@@ -3,7 +3,7 @@ package grpc
 import (
 	"net"
 
-	"github.com/lightmen/nami/log"
+	"github.com/lightmen/nami/core/log"
 )
 
 type Option func(s *Server)
@@ -33,5 +33,9 @@ func Log(log log.Logger) Option {
 }
 
 func Listen(lis net.Listener) Option {
-
+	return func(s *Server) {
+		if lis != nil {
+			s.lis = lis
+		}
+	}
 }
