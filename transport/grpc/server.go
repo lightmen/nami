@@ -2,18 +2,22 @@ package grpc
 
 import (
 	"net"
+	"net/url"
 
 	"github.com/lightmen/nami/core/log"
-
+	"github.com/lightmen/nami/internal/endpoint"
+	"github.com/lightmen/nami/internal/host"
+	"github.com/lightmen/nami/transport"
 	"google.golang.org/grpc"
 )
 
 type Server struct {
 	*grpc.Server
-	network string
-	address string
-	lis     net.Listener
-	log     log.Logger
+	network  string
+	address  string
+	lis      net.Listener
+	log      log.Logger
+	endpoint *url.URL
 }
 
 func New(opts ...Option) (srv *Server, err error) {
@@ -53,14 +57,29 @@ func (s *Server) Stop() (err error) {
 }
 
 func (s *Server) listen() error {
-	if s.lis == nil {
-		lis, err := net.Listen(s.network, s.address)
-		if err != nil {
-			return err
-		}
-
-		s.lis = lis
+	if s.lis != nil {
+		return nil
 	}
 
+	lis, err := net.Listen(s.network, s.address)
+	if err != nil {
+		return err
+	}
+
+	s.lis = lis
+
 	return nil
+}
+
+func (s *Server) Endpoint() (*url.URL, error) {
+	if s.endpoint == nil {
+		addr, err := host.Extract(s.address, s.lis)
+		if err != nil {
+			return nil, err
+		}
+
+		s.endpoint = endpoint.New(transport.GRPC, addr)
+	}
+
+	return s.endpoint, nil
 }

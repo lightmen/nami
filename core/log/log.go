@@ -1,8 +1,15 @@
 package log
 
-type Logger interface {
-	Debug(format string, args ...interface{})
-	Info(format string, args ...interface{})
-	Error(format string, args ...interface{})
-	Fatal(format string, args ...interface{})
+var gLogger = Default()
+
+func SetLogger(logger Logger) {
+	gLogger = logger
+}
+
+func Info(format string, args ...interface{}) {
+	gLogger.Info(format, args...)
+}
+
+func Error(format string, args ...interface{}) {
+	gLogger.Error(format, args...)
 }

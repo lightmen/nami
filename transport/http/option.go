@@ -2,7 +2,9 @@ package http
 
 import (
 	"net"
+	"net/http"
 
+	"github.com/lightmen/nami/core/chain"
 	"github.com/lightmen/nami/core/log"
 )
 
@@ -37,5 +39,23 @@ func Listen(lis net.Listener) Option {
 		if lis != nil {
 			s.lis = lis
 		}
+	}
+}
+
+func Chain(chain chain.Chain) Option {
+	return func(s *Server) {
+		s.chain = chain
+	}
+}
+
+func Middlewares(mids ...chain.Middleware) Option {
+	return func(s *Server) {
+		s.middlewares = append(s.middlewares, mids...)
+	}
+}
+
+func Handler(handler http.Handler) Option {
+	return func(s *Server) {
+		s.handler = handler
 	}
 }
