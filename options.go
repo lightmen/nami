@@ -36,6 +36,12 @@ func ID(id string) Option {
 	}
 }
 
+func Context(ctx context.Context) Option {
+	return func(o *options) {
+		o.ctx = ctx
+	}
+}
+
 func Logger(logger log.Logger) Option {
 	return func(o *options) {
 		if logger != nil {

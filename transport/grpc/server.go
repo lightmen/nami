@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"net"
 	"net/url"
 
@@ -41,7 +42,7 @@ func New(opts ...Option) (srv *Server, err error) {
 	return
 }
 
-func (s *Server) Start() (err error) {
+func (s *Server) Start(ctx context.Context) (err error) {
 	err = s.Serve(s.lis)
 	if err != nil {
 		return
@@ -51,7 +52,7 @@ func (s *Server) Start() (err error) {
 	return
 }
 
-func (s *Server) Stop() (err error) {
+func (s *Server) Stop(ctx context.Context) (err error) {
 	s.log.Info("[gRPC] server stopping")
 	return
 }

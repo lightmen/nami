@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"net/url"
@@ -57,7 +58,7 @@ func New(opts ...Option) (s *Server, err error) {
 	return
 }
 
-func (s *Server) Start() (err error) {
+func (s *Server) Start(ctx context.Context) (err error) {
 	err = s.Serve(s.lis)
 	if err != nil {
 		return
@@ -67,7 +68,7 @@ func (s *Server) Start() (err error) {
 	return
 }
 
-func (s *Server) Stop() (err error) {
+func (s *Server) Stop(ctx context.Context) (err error) {
 	s.log.Info("[HTTP] server stopping")
 	return
 }

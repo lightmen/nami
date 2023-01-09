@@ -1,8 +1,10 @@
 package transport
 
+import "context"
+
 type Server interface {
-	Start() error
-	Stop() error
+	Start(context.Context) error
+	Stop(context.Context) error
 }
 
 //Kind define the type of server
