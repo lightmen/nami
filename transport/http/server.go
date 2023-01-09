@@ -36,7 +36,7 @@ func New(opts ...Option) (s *Server, err error) {
 	s = &Server{
 		network:     "tcp",
 		address:     ":0",
-		timeout:     2 * time.Second,
+		timeout:     3 * time.Second,
 		log:         log.Default(),
 		middlewares: []chain.Middleware{},
 		chain:       chain.New(handler.Recover),
