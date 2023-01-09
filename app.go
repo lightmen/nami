@@ -48,11 +48,26 @@ func New(opts ...Option) (s *App, err error) {
 }
 
 func (a *App) Run() (err error) {
-	instance, err := a.buildInstance()
-	if err != nil {
+	if err = a.startServer(); err != nil {
 		return
 	}
 
+	if err = a.registerInstance(); err != nil {
+		return
+	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, a.opts.sigs...)
+
+	select {
+	case <-c:
+		a.Stop()
+	}
+
+	return
+}
+
+func (a *App) startServer() (err error) {
 	var ctx context.Context
 	ctx, a.cancel = context.WithCancel(a.ctx)
 
@@ -79,26 +94,6 @@ func (a *App) Run() (err error) {
 	}
 
 	wg.Wait()
-
-	if a.opts.registrar != nil {
-		rctx, rcancel := context.WithTimeout(a.opts.ctx, 10*time.Second)
-		defer rcancel()
-
-		if err = a.opts.registrar.Register(rctx, instance); err != nil {
-			return
-		}
-
-		a.updateInstance(instance)
-	}
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, a.opts.sigs...)
-
-	select {
-	case <-c:
-		a.Stop()
-	}
-
 	return
 }
 
@@ -132,4 +127,26 @@ func (a *App) updateInstance(instance *registry.Instance) {
 	a.lk.Lock()
 	a.instance = instance
 	a.lk.Unlock()
+}
+
+func (a *App) registerInstance() (err error) {
+	instance, err := a.buildInstance()
+	if err != nil {
+		return
+	}
+
+	if a.opts.registrar == nil {
+		return
+	}
+
+	rctx, rcancel := context.WithTimeout(a.opts.ctx, 10*time.Second)
+	defer rcancel()
+
+	if err = a.opts.registrar.Register(rctx, instance); err != nil {
+		return
+	}
+
+	a.updateInstance(instance)
+
+	return
 }
