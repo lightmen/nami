@@ -32,9 +32,10 @@ func New(opts ...Option) (a *App, err error) {
 	}
 
 	o := &options{
-		ctx:  context.Background(),
-		id:   id.String(),
-		sigs: []os.Signal{syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT},
+		ctx:    context.Background(),
+		id:     id.String(),
+		sigs:   []os.Signal{syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT},
+		logger: log.Default(),
 	}
 
 	for _, opt := range opts {
@@ -53,6 +54,8 @@ func New(opts ...Option) (a *App, err error) {
 }
 
 func (a *App) Run() (err error) {
+	a.logger.Info("app %s:%s start", a.opts.name, a.opts.id)
+
 	group, ctx := errgroup.WithContext(a.ctx)
 
 	err = a.startServer(group, ctx)
@@ -152,7 +155,24 @@ func (a *App) updateInstance(instance *registry.Instance) {
 	a.lk.Unlock()
 }
 
+func (a *App) getInstance() *registry.Instance {
+	a.lk.RLock()
+	instance := a.instance
+	a.lk.RUnlock()
+
+	return instance
+}
+
 func (a *App) Stop() (err error) {
+	a.logger.Info("app %s:%s stop", a.opts.name, a.opts.id)
+
+	instance := a.getInstance()
+	if a.opts.registrar != nil && instance != nil {
+		if err = a.opts.registrar.Unregister(a.ctx, instance); err != nil {
+			return err
+		}
+	}
+
 	if a.cancel != nil {
 		a.cancel()
 	}

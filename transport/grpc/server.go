@@ -12,6 +12,10 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	_ transport.Server = (*Server)(nil)
+)
+
 type Server struct {
 	*grpc.Server
 	network  string
@@ -43,12 +47,13 @@ func New(opts ...Option) (srv *Server, err error) {
 }
 
 func (s *Server) Start(ctx context.Context) (err error) {
+	s.log.Info("[gRPC] server lintening on: %s", s.lis.Addr().String())
+
 	err = s.Serve(s.lis)
 	if err != nil {
 		return
 	}
 
-	s.log.Info("[gRPC] server lintening on: %s", s.lis.Addr().String())
 	return
 }
 
@@ -79,8 +84,12 @@ func (s *Server) Endpoint() (*url.URL, error) {
 			return nil, err
 		}
 
-		s.endpoint = endpoint.New(transport.GRPC, addr)
+		s.endpoint = endpoint.New(s.Name(), addr)
 	}
 
 	return s.endpoint, nil
+}
+
+func (s *Server) Name() string {
+	return transport.GRPC
 }
