@@ -48,7 +48,7 @@ func (r *Registry) listenLease() {
 			return
 		case rsp, ok := <-r.keepAliveChan:
 			if !ok {
-				r.opts.log.Info("lease end, rsp: %s", rsp.String())
+				r.opts.log.Info("lease end, rsp: %v", rsp)
 				return
 			}
 			r.opts.log.Debug("continue lease: %s", rsp.String())
