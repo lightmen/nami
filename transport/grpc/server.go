@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/lightmen/nami/core/log"
+	"github.com/lightmen/nami/internal/cluster"
 	"github.com/lightmen/nami/internal/endpoint"
 	"github.com/lightmen/nami/internal/host"
 	"github.com/lightmen/nami/transport"
@@ -25,7 +26,7 @@ type Server struct {
 	endpoint *url.URL
 }
 
-func New(opts ...Option) (srv *Server, err error) {
+func New(opts ...ServerOption) (srv *Server, err error) {
 	srv = &Server{
 		network: "tcp",
 		address: ":0",
@@ -42,6 +43,8 @@ func New(opts ...Option) (srv *Server, err error) {
 	}
 
 	srv.Server = grpc.NewServer() // TODO： need add grpc.ServerOption
+
+	cluster.RegisterMemberServer(srv.Server, srv)
 
 	return
 }

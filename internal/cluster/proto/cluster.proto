@@ -1,0 +1,40 @@
+syntax = "proto3";
+package cluster;
+option  go_package = "github.com/lightmen/nami/internal/cluster/cluster";
+
+message RequestMessage {
+    string gateAddr  = 1;
+    int64  sessionId = 2;
+    uint64 id        = 3;
+    string route     = 4;
+    bytes  data      = 5;
+}
+
+message NotifyMessage {
+    string gateAddr  = 1;
+    int64  sessionId = 2;
+    string route     = 3;
+    bytes  data      = 4;
+}
+
+message ResponseMessage {
+    int64  sessionId = 1;
+    uint64 id        = 2;
+    bytes  data      = 3;
+}
+
+message PushMessage {
+    int64  sessionId = 1;
+    string route     = 2;
+    bytes  data      = 3;
+}
+
+message MemberHandleResponse {
+}
+
+service Member {
+    rpc HandleRequest(RequestMessage) returns (MemberHandleResponse) {}
+    rpc HandleNotify(NotifyMessage) returns (MemberHandleResponse) {}
+    rpc HandlePush(PushMessage) returns (MemberHandleResponse) {}
+    rpc HandleResponse(ResponseMessage) returns (MemberHandleResponse) {}
+}
