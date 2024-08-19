@@ -18,7 +18,7 @@ func tagMiddleware(tag string) Middleware {
 	}
 }
 
-func funcsEqual(f1, f2 interface{}) bool {
+func funcsEqual(f1, f2 any) bool {
 	val1 := reflect.ValueOf(f1)
 	val2 := reflect.ValueOf(f2)
 

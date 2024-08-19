@@ -40,7 +40,7 @@ func (r *Registry) GetService(ctx context.Context, srvName string) (instances []
 	return
 }
 
-//watcher
+// watcher
 func (r *Registry) watcher(prefix string) {
 	rch := r.client.Watch(context.Background(), prefix, clientv3.WithPrefix())
 	r.opts.log.Info("watching prefix:%s now...", prefix)

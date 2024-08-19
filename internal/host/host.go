@@ -20,39 +20,71 @@ func Extract(hostPort string, lis net.Listener) (string, error) {
 	if err != nil && lis == nil {
 		return "", err
 	}
-
 	if lis != nil {
-		if p, ok := Port(lis); ok {
-			port = strconv.Itoa(p)
-		} else {
-			return "", fmt.Errorf("failed to extract listen port: %v", lis.Addr())
+		p, ok := Port(lis)
+		if !ok {
+			return "", fmt.Errorf("failed to extract port: %v", lis.Addr())
 		}
+		port = strconv.Itoa(p)
 	}
-
 	if len(addr) > 0 && (addr != "0.0.0.0" && addr != "[::]" && addr != "::") {
 		return net.JoinHostPort(addr, port), nil
 	}
 
-	addr = LocalIP()
-	if addr == "" {
-		return "", fmt.Errorf("failed to extract local port: %v", hostPort)
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", err
 	}
 
-	return net.JoinHostPort(addr, port), nil
+	ips := getIPsByInterfaces(ifaces)
+	if len(ips) != 0 {
+		return net.JoinHostPort(ips[len(ips)-1].String(), port), nil
+	}
+
+	return "", nil
 }
 
-//LocalIP got local ip
-func LocalIP() string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return ""
-	}
-	for _, address := range addrs {
-		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
-				return ipnet.IP.String()
+func getIPsByInterfaces(ifaces []net.Interface) (ips []net.IP) {
+	minIndex := int(^uint(0) >> 1)
+	ips = make([]net.IP, 0)
+	for _, iface := range ifaces {
+		if (iface.Flags & net.FlagUp) == 0 {
+			continue
+		}
+		if iface.Index >= minIndex && len(ips) != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for i, rawAddr := range addrs {
+			var ip net.IP
+			switch addr := rawAddr.(type) {
+			case *net.IPAddr:
+				ip = addr.IP
+			case *net.IPNet:
+				ip = addr.IP
+			default:
+				continue
+			}
+			if isValidIP(ip.String()) {
+				minIndex = iface.Index
+				if i == 0 {
+					ips = make([]net.IP, 0, 1)
+				}
+				ips = append(ips, ip)
+				if ip.To4() != nil {
+					break
+				}
 			}
 		}
 	}
-	return ""
+
+	return ips
+}
+
+func isValidIP(addr string) bool {
+	ip := net.ParseIP(addr)
+	return ip.IsGlobalUnicast() && !ip.IsInterfaceLocalMulticast()
 }

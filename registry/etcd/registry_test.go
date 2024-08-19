@@ -2,13 +2,17 @@ package etcd
 
 import (
 	"context"
-	"reflect"
+	"fmt"
+	"log"
 	"testing"
 	"time"
 
-	"github.com/lightmen/nami/registry"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+
+	"github.com/lightmen/nami/pkg/cast"
+	"github.com/lightmen/nami/registry"
 )
 
 func TestRegistry(t *testing.T) {
@@ -22,49 +26,157 @@ func TestRegistry(t *testing.T) {
 	defer client.Close()
 
 	ctx := context.Background()
-	instance := &registry.Instance{
-		ID:        "0",
-		Name:      "helloworld",
-		Endpoints: []string{"http://127.0.0.1:8000", "grpc://127.0.0.1:9000"},
+	s := &registry.Instance{
+		ID:   "0",
+		Name: "helloworld",
 	}
 
 	r := New(client)
-
-	err = r.Watch(ctx, instance.Name)
+	w, err := r.Watch(ctx, s.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		_ = w.Stop()
+	}()
+	go func() {
+		for {
+			res, err1 := w.Next()
+			if err1 != nil {
+				return
+			}
+			t.Logf("watch: %d", len(res))
+			for _, r := range res {
+				t.Logf("next: %+v", r)
+			}
+		}
+	}()
+	time.Sleep(time.Second)
 
-	err = r.Register(ctx, instance)
-	if err != nil {
-		t.Fatal(err)
+	if err1 := r.Register(ctx, s); err1 != nil {
+		t.Fatal(err1)
 	}
 	time.Sleep(time.Second)
 
-	res, err := r.GetService(ctx, instance.Name)
+	res, err := r.GetService(ctx, s.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 1 && res[0].Name != s.Name {
+		t.Errorf("not expected: %+v", res)
+	}
+
+	if err1 := r.Unregister(ctx, s); err1 != nil {
+		t.Fatal(err1)
+	}
+	time.Sleep(time.Second)
+
+	res, err = r.GetService(ctx, s.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) != 0 {
+		t.Errorf("not expected empty")
+	}
+}
+
+func TestHeartBeat(t *testing.T) {
+	client, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{"127.0.0.1:2379"},
+		DialTimeout: time.Second, DialOptions: []grpc.DialOption{grpc.WithBlock()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	ctx := context.Background()
+	s := &registry.Instance{
+		ID:   "0",
+		Name: "helloworld",
+	}
+
+	go func() {
+		r := New(client)
+		w, err1 := r.Watch(ctx, s.Name)
+		if err1 != nil {
+			return
+		}
+		defer func() {
+			_ = w.Stop()
+		}()
+		for {
+			res, err2 := w.Next()
+			if err2 != nil {
+				return
+			}
+			t.Logf("watch: %d", len(res))
+			for _, r := range res {
+				t.Logf("next: %+v", r)
+			}
+		}
+	}()
+	time.Sleep(time.Second)
+
+	// new a server
+	r := New(client,
+		RegisterTTL(2*time.Second),
+		MaxRetry(5),
+	)
+
+	key := fmt.Sprintf("%s/%s/%s", r.opts.namespace, s.Name, s.ID)
+	value, _ := marshal(s)
+	r.lease = clientv3.NewLease(r.client)
+	leaseID, err := r.registerWithKV(ctx, key, value)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if len(res) != 1 && !reflect.DeepEqual(res, instance) {
-		t.Errorf("instant inspect %+v, got: %+v", instance, res)
-	}
+	// wait for lease expired
+	time.Sleep(6 * time.Second)
 
-	time.Sleep(time.Second * 1)
-
-	t.Logf("start unregister ectd")
-
-	err = r.Unregister(ctx, instance)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	res, err = r.GetService(ctx, instance.Name)
+	res, err := r.GetService(ctx, s.Name)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(res) != 0 {
-		t.Errorf("res is not releaseed")
+		t.Errorf("not expected empty")
 	}
+
+	go r.heartBeat(ctx, leaseID, key, value)
+
+	time.Sleep(time.Second)
+	res, err = r.GetService(ctx, s.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res) == 0 {
+		t.Errorf("reconnect failed")
+	}
+}
+
+func TestAutoWatch(t *testing.T) {
+	client, err := clientv3.New(clientv3.Config{
+		Endpoints:   []string{"127.0.0.1:2379"},
+		DialTimeout: time.Second, DialOptions: []grpc.DialOption{grpc.WithBlock()},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	r := New(client, Namespace("/servers/crazypoker"))
+
+	rw, err := registry.NewAutoWatcher("", r, updateIns)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	time.Sleep(time.Second * 10)
+	rw.Close()
+}
+
+func updateIns(insList []*registry.Instance) {
+	log.Printf("insList: %s", cast.ToJson(insList))
 }

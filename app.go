@@ -9,80 +9,132 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/lightmen/nami/core/log"
+	"github.com/lightmen/nami/alog"
 	"github.com/lightmen/nami/registry"
 	"github.com/lightmen/nami/transport"
+	"github.com/rs/xid"
 	"golang.org/x/sync/errgroup"
 )
 
 type App struct {
 	opts     *options
-	logger   log.Logger
 	ctx      context.Context
 	cancel   context.CancelFunc
 	instance *registry.Instance
 	lk       sync.RWMutex
 }
 
-func New(opts ...Option) (a *App, err error) {
-	id, err := uuid.NewUUID()
-	if err != nil {
-		return
-	}
+var gApp *App
 
+func GetInfo() AppInfo {
+	return GetApp()
+}
+
+func GetApp() *App {
+	return gApp
+}
+
+func GetContext() context.Context {
+	return GetApp().Context()
+}
+
+func New(opts ...Option) (a *App, err error) {
+	id := xid.New()
 	o := &options{
-		ctx:    context.Background(),
-		id:     id.String(),
-		sigs:   []os.Signal{syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT},
-		logger: log.Default(),
+		ctx:  context.Background(),
+		id:   id.String(),
+		sigs: []os.Signal{syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGINT},
 	}
 
 	for _, opt := range opts {
 		opt(o)
 	}
 
+	ctx, cancel := context.WithCancel(o.ctx)
+
 	a = &App{
-		ctx:    context.Background(),
+		cancel: cancel,
 		opts:   o,
-		logger: o.logger,
 	}
 
-	a.ctx, a.cancel = context.WithCancel(o.ctx)
+	a.ctx = NewContext(ctx, a)
+
+	if gApp == nil {
+		gApp = a
+	}
 
 	return
 }
 
 func (a *App) Run() (err error) {
-	a.logger.Info("app %s:%s start", a.opts.name, a.opts.id)
+	alog.Info("app %s:%s start", a.opts.name, a.opts.id)
 
-	group, ctx := errgroup.WithContext(a.ctx)
+	instance, err := a.buildInstance()
+	if err != nil {
+		return
+	}
+	a.updateInstance(instance)
+
+	sctx := a.ctx
+
+	group, ctx := errgroup.WithContext(sctx)
+
+	for _, fn := range a.opts.beforeStart {
+		if err = fn(sctx); err != nil {
+			return
+		}
+	}
 
 	err = a.startServer(group, ctx)
 	if err != nil {
 		return
 	}
 
-	if err = a.registerInstance(); err != nil {
-		return
+	if a.opts.registrar != nil {
+		rctx, rcancel := context.WithTimeout(ctx, 10*time.Second)
+		defer rcancel()
+
+		if err = a.opts.registrar.Register(rctx, instance); err != nil {
+			return err
+		}
+	}
+
+	for _, fn := range a.opts.afterStart {
+		if err = fn(sctx); err != nil {
+			return
+		}
 	}
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, a.opts.sigs...)
 	group.Go(func() error {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-c:
-			return a.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				alog.InfoCtx(ctx, "ctx done, app exit")
+				return nil
+			case sig := <-c:
+				if a.opts.sigFunc != nil && !a.opts.sigFunc(sig) {
+					alog.InfoCtx(ctx, "got signal %s, but can not exit", sig.String())
+					continue
+				}
+				alog.InfoCtx(ctx, "got signal %s exit", sig.String())
+				return a.Stop()
+			}
 		}
 	})
 
 	if err = group.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		alog.InfoCtx(ctx, "group stopped, err: %s", err.Error())
 		return
 	}
 
-	return nil
+	for _, fn := range a.opts.afterStop {
+		err = fn(sctx)
+	}
+
+	alog.InfoCtx(ctx, "app %s:%s end", a.opts.name, a.opts.id)
+	return err
 }
 
 func (a *App) startServer(group *errgroup.Group, ctx context.Context) (err error) {
@@ -93,7 +145,9 @@ func (a *App) startServer(group *errgroup.Group, ctx context.Context) (err error
 
 		group.Go(func() error {
 			<-ctx.Done() // wait for stop signal
-			return srv.Stop(ctx)
+			stopCtx, cancel := context.WithTimeout(NewContext(a.opts.ctx, a), 10*time.Second)
+			defer cancel()
+			return srv.Stop(stopCtx)
 		})
 
 		wg.Add(1)
@@ -104,28 +158,6 @@ func (a *App) startServer(group *errgroup.Group, ctx context.Context) (err error
 	}
 
 	wg.Wait()
-	return
-}
-
-func (a *App) registerInstance() (err error) {
-	instance, err := a.buildInstance()
-	if err != nil {
-		return
-	}
-
-	a.updateInstance(instance)
-
-	if a.opts.registrar == nil {
-		return
-	}
-
-	rctx, rcancel := context.WithTimeout(a.opts.ctx, 10*time.Second)
-	defer rcancel()
-
-	if err = a.opts.registrar.Register(rctx, instance); err != nil {
-		return
-	}
-
 	return
 }
 
@@ -164,12 +196,16 @@ func (a *App) getInstance() *registry.Instance {
 }
 
 func (a *App) Stop() (err error) {
-	a.logger.Info("app %s:%s stop", a.opts.name, a.opts.id)
+	alog.Info("app %s:%s stop", a.opts.name, a.opts.id)
 
 	instance := a.getInstance()
+
 	if a.opts.registrar != nil && instance != nil {
-		if err = a.opts.registrar.Unregister(a.ctx, instance); err != nil {
-			return err
+		ctx, cancel := context.WithTimeout(NewContext(a.ctx, a), 5*time.Second)
+		defer cancel()
+		if err = a.opts.registrar.Unregister(ctx, instance); err != nil {
+			alog.InfoCtx(ctx, "app %s:%s Unregister error: %s", a.opts.name, a.opts.id, err.Error())
+			return
 		}
 	}
 
@@ -178,4 +214,8 @@ func (a *App) Stop() (err error) {
 	}
 
 	return
+}
+
+func (a *App) Context() context.Context {
+	return a.ctx
 }

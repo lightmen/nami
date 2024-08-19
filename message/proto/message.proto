@@ -1,0 +1,34 @@
+syntax = "proto3";
+package message;
+option  go_package = "github.com/lightmen/nami/internal/message";
+
+// Head PB的packet头部
+message Head {
+    Type            Type    = 1;  //消息类型
+    int64           Seq     = 2;  // 序列号
+    string          Route   = 3;  // 路由key
+    string          From    = 4;  //来自哪个服务调用
+    int32           Cmd     = 5;  //命令字
+    repeated string Targets = 6;  //当Type为 NOTIFY 时，存储玩家uid
+}
+
+enum Type {
+    NONE      = 0;
+    REQUEST   = 1;  //对某个服务发送请求，有回包
+    EVENT     = 2;  //对某个服务发送事件，不关注回包
+    NOTIFY    = 3;  //对某几个玩家发送通知,notify跟event没啥区别,只是发送对象不同而已
+    NOTIFYALL = 4;  //对所有在线玩家发送通知
+}
+
+// Message 网络层收到的一个帧格式为Packet结构
+message Packet {
+    Head  Head = 1;
+    bytes Body = 2;
+}
+
+message Empty {
+}
+
+service Message {
+    rpc HandleMessage(Packet) returns (Packet) {}
+}

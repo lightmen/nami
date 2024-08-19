@@ -57,23 +57,3 @@ func TestExtract(t *testing.T) {
 		t.Errorf("expected %s got %s", expect, res)
 	}
 }
-
-func TestLocalIP(t *testing.T) {
-	tests := []struct {
-		name string
-		want string
-	}{
-		{
-			name: "test1",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := LocalIP(); got == "" {
-				t.Errorf("LocalIP() = %v, want %v", got, tt.want)
-			} else {
-				t.Logf("got localIP: %s", got)
-			}
-		})
-	}
-}
